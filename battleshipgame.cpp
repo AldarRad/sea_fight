@@ -12,20 +12,20 @@
 #include <ctime>
 #include <cstdlib>
 #include <utility>
-
-static std::vector<ShipInfo> fleet = {
-    {4, 1, 1, "Линкор"},
-    {3, 2, 2, "Крейсер"},
-    {2, 3, 3, "Эсминец"},
-    {1, 4, 4, "Катер"}
-};
+#include <random>
 
 BattleShipGame::BattleShipGame(QWidget *parent) : QGraphicsView(parent),
     placing(true), horizontal(true), currentShipIndex(0), myTurn(false), gameEnded(false),
-    server(nullptr), socket(nullptr), isServer(false) {
+    server(nullptr), socket(nullptr), isServer(false), gridSize(Size10x10),
+    cellSize(DEFAULT_CELL_SIZE), minesEnabled(false), minesCount(2) {
 
     scene = new QGraphicsScene(this);
     setScene(scene);
+
+    // Добавьте эти проверки:
+    qDebug() << "Constructor - scene created";
+    qDebug() << "Default grid size:" << gridSize << "cell size:" << cellSize;
+
     setFixedSize(WINDOW_WIDTH, WINDOW_HEIGHT);
     setBackgroundBrush(QBrush(Qt::black));
 
@@ -33,11 +33,79 @@ BattleShipGame::BattleShipGame(QWidget *parent) : QGraphicsView(parent),
     setFocus();
     setMouseTracking(true);
 
-    playerGrid.resize(GRID_SIZE, std::vector<Cell>(GRID_SIZE, Empty));
-    opponentGrid.resize(GRID_SIZE, std::vector<Cell>(GRID_SIZE, Empty));
+    showGameOptions();
+}
 
-    playerFleet = fleet;
-    opponentFleet = fleet;
+void BattleShipGame::showGameOptions() {
+    QDialog optionsDialog(this);
+    optionsDialog.setWindowTitle("Настройки игры");
+
+    QVBoxLayout *layout = new QVBoxLayout(&optionsDialog);
+
+    // Выбор размера поля
+    QGroupBox *sizeGroup = new QGroupBox("Размер поля", &optionsDialog);
+    QVBoxLayout *sizeLayout = new QVBoxLayout;
+    QRadioButton *size8 = new QRadioButton("8x8", sizeGroup);
+    QRadioButton *size10 = new QRadioButton("10x10 (по умолчанию)", sizeGroup);
+    QRadioButton *size12 = new QRadioButton("12x12", sizeGroup);
+    size10->setChecked(true);
+
+    sizeLayout->addWidget(size8);
+    sizeLayout->addWidget(size10);
+    sizeLayout->addWidget(size12);
+    sizeGroup->setLayout(sizeLayout);
+
+    // Режим мин
+    QCheckBox *minesCheck = new QCheckBox("Режим 'Мины' (2 мины на поле)", &optionsDialog);
+
+    // Кнопки
+    QPushButton *okButton = new QPushButton("Начать игру", &optionsDialog);
+    QPushButton *cancelButton = new QPushButton("Выход", &optionsDialog);
+
+    QHBoxLayout *buttonLayout = new QHBoxLayout;
+    buttonLayout->addWidget(okButton);
+    buttonLayout->addWidget(cancelButton);
+
+    layout->addWidget(sizeGroup);
+    layout->addWidget(minesCheck);
+    layout->addLayout(buttonLayout);
+
+    connect(okButton, &QPushButton::clicked, [&]() {
+        if (size8->isChecked()) gridSize = Size8x8;
+        else if (size10->isChecked()) gridSize = Size10x10;
+        else gridSize = Size12x12;
+
+        cellSize = (gridSize == Size12x12) ? 35 : DEFAULT_CELL_SIZE;
+        minesEnabled = minesCheck->isChecked();
+
+        optionsDialog.accept();
+        qDebug() << "Options selected - gridSize:" << gridSize
+                 << "cellSize:" << cellSize
+                 << "minesEnabled:" << minesEnabled;
+
+        initializeGame();
+    });
+
+    connect(cancelButton, &QPushButton::clicked, &optionsDialog, &QDialog::reject);
+
+    if (optionsDialog.exec() == QDialog::Rejected) {
+        QCoreApplication::quit();
+        return;
+    }
+}
+
+void BattleShipGame::initializeGame() {
+    qDebug() << "Initializing game with gridSize:" << gridSize;
+
+    playerGrid.resize(gridSize, std::vector<Cell>(gridSize, Empty));
+    opponentGrid.resize(gridSize, std::vector<Cell>(gridSize, Empty));
+
+    initializeFleet();
+
+    if (minesEnabled) {
+        placeMines(playerGrid);
+        placeMines(opponentGrid);
+    }
 
     messageTimer = new QTimer(this);
     connect(messageTimer, &QTimer::timeout, this, &BattleShipGame::hideMessage);
@@ -59,6 +127,57 @@ BattleShipGame::BattleShipGame(QWidget *parent) : QGraphicsView(parent),
     }
 
     drawGrids();
+}
+
+void BattleShipGame::initializeFleet() {
+    playerFleet.clear();
+    opponentFleet.clear();
+
+    switch (gridSize) {
+    case Size8x8:
+        playerFleet = {
+            {3, 1, 1, "Линкор"},
+            {2, 2, 2, "Крейсер"},
+            {1, 3, 3, "Катер"}
+        };
+        break;
+    case Size10x10:
+        playerFleet = {
+            {4, 1, 1, "Линкор"},
+            {3, 2, 2, "Крейсер"},
+            {2, 3, 3, "Эсминец"},
+            {1, 4, 4, "Катер"}
+        };
+        break;
+    case Size12x12:
+        playerFleet = {
+            {5, 1, 1, "Авианосец"},
+            {4, 1, 1, "Линкор"},
+            {3, 2, 2, "Крейсер"},
+            {2, 3, 3, "Эсминец"},
+            {1, 4, 4, "Катер"}
+        };
+        break;
+    }
+
+    opponentFleet = playerFleet;
+}
+
+void BattleShipGame::placeMines(Grid& grid) {
+    std::random_device rd;
+    std::mt19937 gen(rd());
+    std::uniform_int_distribution<> dis(0, gridSize - 1);
+
+    int placed = 0;
+    while (placed < minesCount) {
+        int x = dis(gen);
+        int y = dis(gen);
+
+        if (grid[x][y] == Empty) {
+            grid[x][y] = Mine;
+            placed++;
+        }
+    }
 }
 
 BattleShipGame::~BattleShipGame() {
@@ -242,7 +361,7 @@ void BattleShipGame::mouseMoveEvent(QMouseEvent *event) {
 }
 
 bool BattleShipGame::isInside(int x, int y) {
-    return x >= 0 && y >= 0 && x < GRID_SIZE && y < GRID_SIZE;
+    return x >= 0 && y >= 0 && x < gridSize && y < gridSize;
 }
 
 bool BattleShipGame::isSurroundingClear(Grid& grid, int x, int y, int size, bool horizontal) {
@@ -282,7 +401,7 @@ std::vector<std::pair<int, int>> BattleShipGame::getShipCells(const Grid& grid, 
     int startX = x;
     while (startX > 0 && grid[startX - 1][y] == Hit) --startX;
     int endX = x;
-    while (endX + 1 < GRID_SIZE && grid[endX + 1][y] == Hit) ++endX;
+    while (endX + 1 < gridSize && grid[endX + 1][y] == Hit) ++endX;
     if (endX - startX >= 1) {
         for (int i = startX; i <= endX; ++i) cells.emplace_back(i, y);
         return cells;
@@ -291,7 +410,7 @@ std::vector<std::pair<int, int>> BattleShipGame::getShipCells(const Grid& grid, 
     int startY = y;
     while (startY > 0 && grid[x][startY - 1] == Hit) --startY;
     int endY = y;
-    while (endY + 1 < GRID_SIZE && grid[x][endY + 1] == Hit) ++endY;
+    while (endY + 1 < gridSize && grid[x][endY + 1] == Hit) ++endY;
     if (endY - startY >= 1) {
         for (int i = startY; i <= endY; ++i) cells.emplace_back(x, i);
         return cells;
@@ -318,6 +437,9 @@ bool BattleShipGame::isShipSunk(const Grid& grid, int x, int y) {
 
 void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
                               const std::vector<ShipInfo>& fleetInfo, bool showShips, const QString& label) {
+
+    drawGrid(50, 50, playerGrid, playerFleet, true, "Игрок");
+    drawGrid(50 + gridSize * cellSize + 50, 50, opponentGrid, opponentFleet, false, "Противник");
     QFont font("Arial", 14, QFont::Bold);
     QFont smallFont("Arial", 10);
 
@@ -328,28 +450,28 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
     gridLabel->setPos(offsetX, offsetY - 70);
     scene->addItem(gridLabel);
 
-    // Буквы (A-J) сверху
-    for (int x = 0; x < GRID_SIZE; ++x) {
+    // Буквы сверху
+    for (int x = 0; x < gridSize; ++x) {
         QGraphicsTextItem *letter = new QGraphicsTextItem(QString(QChar('A' + x)));
         letter->setFont(font);
         letter->setDefaultTextColor(COLOR_GRID_LABELS);
-        letter->setPos(offsetX + x * CELL_SIZE + CELL_SIZE/2 - 7, offsetY - 40);
+        letter->setPos(offsetX + x * cellSize + cellSize/2 - 7, offsetY - 40);
         scene->addItem(letter);
     }
 
-    // Цифры (1-10) слева
-    for (int y = 0; y < GRID_SIZE; ++y) {
+    // Цифры слева
+    for (int y = 0; y < gridSize; ++y) {
         QGraphicsTextItem *number = new QGraphicsTextItem(QString::number(y + 1));
         number->setFont(font);
         number->setDefaultTextColor(COLOR_GRID_LABELS);
-        number->setPos(offsetX - 30, offsetY + y * CELL_SIZE + CELL_SIZE/2 - 10);
+        number->setPos(offsetX - 30, offsetY + y * cellSize + cellSize/2 - 10);
         scene->addItem(number);
     }
 
     // Рамка вокруг поля
     QGraphicsRectItem *border = new QGraphicsRectItem(
         offsetX - 3, offsetY - 3,
-        GRID_SIZE * CELL_SIZE + 6, GRID_SIZE * CELL_SIZE + 6);
+        gridSize * cellSize + 6, gridSize * cellSize + 6);
     QPen borderPen(label == "Игрок" ? COLOR_PLAYER_LABEL : COLOR_AI_LABEL, 3);
     borderPen.setJoinStyle(Qt::MiterJoin);
     border->setPen(borderPen);
@@ -357,14 +479,14 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
     scene->addItem(border);
 
     // Отрисовка клеток
-    for (int x = 0; x < GRID_SIZE; ++x) {
-        for (int y = 0; y < GRID_SIZE; ++y) {
-            QGraphicsRectItem *cell = new QGraphicsRectItem(1, 1, CELL_SIZE - 4, CELL_SIZE - 4);
-            cell->setPos(offsetX + x * CELL_SIZE + 1, offsetY + y * CELL_SIZE + 1);
+    for (int x = 0; x < gridSize; ++x) {
+        for (int y = 0; y < gridSize; ++y) {
+            QGraphicsRectItem *cell = new QGraphicsRectItem(1, 1, cellSize - 4, cellSize - 4);
+            cell->setPos(offsetX + x * cellSize + 1, offsetY + y * cellSize + 1);
             cell->setPen(Qt::NoPen);
 
             if (grid[x][y] == Ship && !showShips) {
-                QLinearGradient grad(0, 0, 0, CELL_SIZE);
+                QLinearGradient grad(0, 0, 0, cellSize);
                 grad.setColorAt(0, QColor(30, 60, 120));
                 grad.setColorAt(1, QColor(10, 30, 80));
                 cell->setBrush(grad);
@@ -373,7 +495,7 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
                 cell->setBrush(QBrush(COLOR_SHIP));
             }
             else if (grid[x][y] == Hit) {
-                QRadialGradient grad(cell->rect().center(), CELL_SIZE/2);
+                QRadialGradient grad(cell->rect().center(), cellSize/2);
                 grad.setColorAt(0, QColor(255, 80, 80));
                 grad.setColorAt(1, QColor(180, 20, 20));
                 cell->setBrush(grad);
@@ -381,8 +503,27 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
             else if (grid[x][y] == Miss) {
                 cell->setBrush(QBrush(COLOR_MISS));
             }
+            else if (grid[x][y] == Mine && showShips) {
+                // Рисуем мину только на своем поле
+                QRadialGradient grad(cell->rect().center(), cellSize/3);
+                grad.setColorAt(0, QColor(255, 255, 100));
+                grad.setColorAt(1, QColor(255, 165, 0));
+                cell->setBrush(grad);
+
+                // Рисуем "взрывающиеся" линии
+                QGraphicsLineItem *line1 = new QGraphicsLineItem(
+                    offsetX + x * cellSize + cellSize/2, offsetY + y * cellSize + 5,
+                    offsetX + x * cellSize + cellSize/2, offsetY + y * cellSize + cellSize - 5);
+                QGraphicsLineItem *line2 = new QGraphicsLineItem(
+                    offsetX + x * cellSize + 5, offsetY + y * cellSize + cellSize/2,
+                    offsetX + x * cellSize + cellSize - 5, offsetY + y * cellSize + cellSize/2);
+                line1->setPen(QPen(Qt::black, 2));
+                line2->setPen(QPen(Qt::black, 2));
+                scene->addItem(line1);
+                scene->addItem(line2);
+            }
             else {
-                QLinearGradient grad(0, 0, 0, CELL_SIZE);
+                QLinearGradient grad(0, 0, 0, cellSize);
                 grad.setColorAt(0, QColor(30, 60, 120));
                 grad.setColorAt(1, QColor(10, 30, 80));
                 cell->setBrush(grad);
@@ -393,15 +534,15 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
 
     // Отрисовка информации о флоте
     QGraphicsRectItem *fleetBg = new QGraphicsRectItem(
-        offsetX - 10, offsetY + GRID_SIZE * CELL_SIZE + 15,
-        GRID_SIZE * CELL_SIZE + 20, fleetInfo.size() * 25 + 30);
+        offsetX - 10, offsetY + gridSize * cellSize + 15,
+        gridSize * cellSize + 20, fleetInfo.size() * 25 + 30);
     fleetBg->setBrush(QBrush(QColor(20, 40, 80, 200)));
     fleetBg->setPen(QPen(label == "Игрок" ? COLOR_PLAYER_LABEL : COLOR_AI_LABEL, 2));
     scene->addItem(fleetBg);
 
     for (size_t i = 0; i < fleetInfo.size(); ++i) {
         QGraphicsRectItem *shipIcon = new QGraphicsRectItem(
-            offsetX, offsetY + GRID_SIZE * CELL_SIZE + 30 + i * 25,
+            offsetX, offsetY + gridSize * cellSize + 30 + i * 25,
             15, 15);
         shipIcon->setBrush(fleetInfo[i].remaining == 0 ? QBrush(Qt::gray) :
                                (label == "Игрок" ? QBrush(COLOR_PLAYER_LABEL) : QBrush(COLOR_AI_LABEL)));
@@ -412,26 +553,27 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
                 .arg(fleetInfo[i].remaining)
                 .arg(fleetInfo[i].count));
         text->setFont(smallFont);
-        text->setPos(offsetX + 20, offsetY + GRID_SIZE * CELL_SIZE + 25 + i * 25);
+        text->setPos(offsetX + 20, offsetY + gridSize * cellSize + 25 + i * 25);
         text->setDefaultTextColor(fleetInfo[i].remaining == 0 ? Qt::gray : COLOR_SHIP_COUNT);
         scene->addItem(text);
     }
+    qDebug() << "Drawing grids...";
+    drawGrids();
 }
-
 void BattleShipGame::drawGrids() {
     scene->clear();
 
+    // Замените cellSize на cellSize
     drawGrid(50, 50, playerGrid, playerFleet, true, "Игрок");
-    drawGrid(50 + GRID_SIZE * CELL_SIZE + 50, 50, opponentGrid, opponentFleet, false, "Противник");
+    drawGrid(50 + gridSize * cellSize + 50, 50, opponentGrid, opponentFleet, false, "Противник");
 
-    // Показ превью текущего корабля при расстановке
     if (placing && currentShipIndex < playerFleet.size()) {
         QPoint mousePos = mapFromGlobal(QCursor::pos());
         QPointF pos = mapToScene(mousePos);
-        int mx = (pos.x() - 50) / CELL_SIZE;
-        int my = (pos.y() - 50) / CELL_SIZE;
+        int mx = (pos.x() - 50) / cellSize;  // Исправлено здесь
+        int my = (pos.y() - 50) / cellSize;
 
-        if (mx >= 0 && mx < GRID_SIZE && my >= 0 && my < GRID_SIZE) {
+        if (mx >= 0 && mx < gridSize && my >= 0 && my < gridSize) {
             auto& ship = playerFleet[currentShipIndex];
             if (ship.count > 0) {
                 bool canPlaceHere = canPlace(playerGrid, mx, my, ship.size, horizontal);
@@ -441,9 +583,9 @@ void BattleShipGame::drawGrids() {
                 for (int i = 0; i < ship.size; ++i) {
                     int px = mx + (horizontal ? i : 0);
                     int py = my + (horizontal ? 0 : i);
-                    if (px < GRID_SIZE && py < GRID_SIZE) {
-                        QGraphicsRectItem *outline = new QGraphicsRectItem(0, 0, CELL_SIZE - 2, CELL_SIZE - 2);
-                        outline->setPos(50 + px * CELL_SIZE, 50 + py * CELL_SIZE);
+                    if (px < gridSize && py < gridSize) {
+                        QGraphicsRectItem *outline = new QGraphicsRectItem(0, 0, cellSize- 2, cellSize- 2);
+                        outline->setPos(50 + px * cellSize, 50 + py * cellSize);
                         outline->setBrush(Qt::NoBrush);
                         outline->setPen(QPen(previewColor, 2));
                         scene->addItem(outline);
@@ -457,8 +599,8 @@ void BattleShipGame::drawGrids() {
                             int px = mx + (horizontal ? i : j);
                             int py = my + (horizontal ? j : i);
                             if (isInside(px, py) && playerGrid[px][py] == Empty) {
-                                QGraphicsRectItem *blocked = new QGraphicsRectItem(0, 0, CELL_SIZE - 2, CELL_SIZE - 2);
-                                blocked->setPos(50 + px * CELL_SIZE, 50 + py * CELL_SIZE);
+                                QGraphicsRectItem *blocked = new QGraphicsRectItem(0, 0, cellSize- 2, cellSize- 2);
+                                blocked->setPos(50 + px * cellSize, 50 + py * cellSize);
                                 blocked->setBrush(QBrush(QColor(255, 0, 0, 100)));
                                 scene->addItem(blocked);
                             }
@@ -477,7 +619,7 @@ void BattleShipGame::drawGrids() {
                 QGraphicsTextItem *hint = new QGraphicsTextItem("Нажмите X для смены ориентации");
                 hint->setFont(QFont("Arial", 10));
                 hint->setDefaultTextColor(Qt::white);
-                hint->setPos(50, 50 + GRID_SIZE * CELL_SIZE + 200);
+                hint->setPos(50, 50 + gridSize * cellSize+ 200);
                 scene->addItem(hint);
             }
         }
@@ -550,10 +692,10 @@ void BattleShipGame::mousePressEvent(QMouseEvent *event) {
     if (placing) {
         if (event->button() == Qt::LeftButton && currentShipIndex < playerFleet.size()) {
             QPointF pos = mapToScene(event->pos());
-            int mx = (pos.x() - 50) / CELL_SIZE;
-            int my = (pos.y() - 50) / CELL_SIZE;
+            int mx = (pos.x() - 50) / cellSize;
+            int my = (pos.y() - 50) / cellSize;
 
-            if (mx >= 0 && mx < GRID_SIZE && my >= 0 && my < GRID_SIZE) {
+            if (mx >= 0 && mx < gridSize && my >= 0 && my < gridSize) {
                 auto& ship = playerFleet[currentShipIndex];
                 if (ship.count > 0 && canPlace(playerGrid, mx, my, ship.size, horizontal)) {
                     placeShip(playerGrid, mx, my, ship.size, horizontal);
@@ -579,12 +721,41 @@ void BattleShipGame::mousePressEvent(QMouseEvent *event) {
     } else if (myTurn && !placing) {
         if (event->button() == Qt::LeftButton) {
             QPointF pos = mapToScene(event->pos());
-            int mx = (pos.x() - (50 + GRID_SIZE * CELL_SIZE + 50)) / CELL_SIZE;
-            int my = (pos.y() - 50) / CELL_SIZE;
+            int mx = (pos.x() - (50 + gridSize * cellSize + 50)) / cellSize;
+            int my = (pos.y() - 50) / cellSize;
 
-            if (mx >= 0 && mx < GRID_SIZE && my >= 0 && my < GRID_SIZE) {
-                if (opponentGrid[mx][my] == Empty) {
-                    sendMessage("SHOT:" + QString::number(mx) + "," + QString::number(my));
+            if (mx >= 0 && mx < gridSize && my >= 0 && my < gridSize) {
+                if (opponentGrid[mx][my] == Empty || opponentGrid[mx][my] == Mine) {
+                    if (opponentGrid[mx][my] == Mine) {
+                        // При попадании в мину - взрыв и повреждение соседних клеток
+                        for (int dx = -1; dx <= 1; ++dx) {
+                            for (int dy = -1; dy <= 1; ++dy) {
+                                int nx = mx + dx;
+                                int ny = my + dy;
+                                if (isInside(nx, ny)) {
+                                    if (opponentGrid[nx][ny] == Ship) {
+                                        opponentGrid[nx][ny] = Hit;
+                                        // Проверяем, не потоплен ли корабль
+                                        if (isShipSunk(opponentGrid, nx, ny)) {
+                                            auto cells = getShipCells(opponentGrid, nx, ny);
+                                            for (auto& s : opponentFleet) {
+                                                if (s.remaining > 0 && s.size == (int)cells.size()) {
+                                                    s.remaining--;
+                                                    sendMessage("SUNK:" + QString::number(s.size));
+                                                    showMessage("Вы потопили " + s.name + " противника (миной)!");
+                                                    break;
+                                                }
+                                            }
+                                        }
+                                    }
+                                    opponentGrid[nx][ny] = Hit;
+                                }
+                            }
+                        }
+                        sendMessage("MINE:" + QString::number(mx) + "," + QString::number(my));
+                    } else {
+                        sendMessage("SHOT:" + QString::number(mx) + "," + QString::number(my));
+                    }
                     myTurn = false;
                     showMessage("Ожидаем ответ противника...", false);
                 }

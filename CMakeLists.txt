@@ -8,7 +8,6 @@ set(CMAKE_AUTORCC ON)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
-# Ищем Qt с поддержкой Widgets И Network
 find_package(QT NAMES Qt6 Qt5 REQUIRED COMPONENTS Widgets Network)
 find_package(Qt${QT_VERSION_MAJOR} REQUIRED COMPONENTS Widgets Network)
 
@@ -19,21 +18,16 @@ set(PROJECT_SOURCES
 )
 
 if(${QT_VERSION_MAJOR} GREATER_EQUAL 6)
-    qt_add_executable(sea
-        MANUAL_FINALIZATION
-        ${PROJECT_SOURCES}
-    )
+    qt_add_executable(sea ${PROJECT_SOURCES})
 else()
     add_executable(sea ${PROJECT_SOURCES})
 endif()
 
-# Подключаем все необходимые модули Qt
 target_link_libraries(sea PRIVATE
     Qt${QT_VERSION_MAJOR}::Widgets
     Qt${QT_VERSION_MAJOR}::Network
 )
 
-# Настройки для macOS (можно оставить как есть)
 if(${QT_VERSION} VERSION_LESS 6.1.0)
     set(BUNDLE_ID_OPTION MACOSX_BUNDLE_GUI_IDENTIFIER com.example.sea)
 endif()
@@ -46,7 +40,6 @@ set_target_properties(sea PROPERTIES
     WIN32_EXECUTABLE TRUE
 )
 
-# Установка (опционально)
 include(GNUInstallDirs)
 install(TARGETS sea
     BUNDLE DESTINATION .

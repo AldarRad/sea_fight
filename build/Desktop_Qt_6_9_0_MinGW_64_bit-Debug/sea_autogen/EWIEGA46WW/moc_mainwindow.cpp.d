@@ -1,4 +1,4 @@
-D:/Projects/sea_battle/sea/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/sea_autogen/EWIEGA46WW/moc_battleshipgame.cpp: D:/Projects/sea_battle/sea/battleshipgame.h \
+D:/Projects/sea_battle/sea/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/sea_autogen/EWIEGA46WW/moc_mainwindow.cpp: D:/Projects/sea_battle/sea/mainwindow.h \
   D:/Projects/sea_battle/sea/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/sea_autogen/moc_predefs.h \
   C:/Qt/6.9.0/mingw_64/include/QtCore/QList \
   C:/Qt/6.9.0/mingw_64/include/QtCore/QObject \
@@ -166,6 +166,7 @@ D:/Projects/sea_battle/sea/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/sea_autogen
   C:/Qt/6.9.0/mingw_64/include/QtGui/qkeysequence.h \
   C:/Qt/6.9.0/mingw_64/include/QtGui/qpaintdevice.h \
   C:/Qt/6.9.0/mingw_64/include/QtGui/qpainter.h \
+  C:/Qt/6.9.0/mingw_64/include/QtGui/qpainterpath.h \
   C:/Qt/6.9.0/mingw_64/include/QtGui/qpalette.h \
   C:/Qt/6.9.0/mingw_64/include/QtGui/qpen.h \
   C:/Qt/6.9.0/mingw_64/include/QtGui/qpixelformat.h \
@@ -195,30 +196,36 @@ D:/Projects/sea_battle/sea/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/sea_autogen
   C:/Qt/6.9.0/mingw_64/include/QtNetwork/qtnetwork-config.h \
   C:/Qt/6.9.0/mingw_64/include/QtNetwork/qtnetworkexports.h \
   C:/Qt/6.9.0/mingw_64/include/QtNetwork/qtnetworkglobal.h \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QCheckBox \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QDialog \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QGraphicsProxyWidget \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/QGraphicsView \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QGroupBox \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QHBoxLayout \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QMainWindow \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QMessageBox \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/QPushButton \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QRadioButton \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QStackedWidget \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/QVBoxLayout \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/QWidget \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qabstractbutton.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qabstractscrollarea.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qboxlayout.h \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qcheckbox.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qdialog.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qdialogbuttonbox.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qframe.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgraphicsitem.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgraphicslayoutitem.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgraphicsproxywidget.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgraphicsscene.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgraphicsview.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgraphicswidget.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgridlayout.h \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qgroupbox.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qlayout.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qlayoutitem.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qmainwindow.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qmessagebox.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qpushbutton.h \
-  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qradiobutton.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qscrollarea.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qsizepolicy.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qstackedwidget.h \
+  C:/Qt/6.9.0/mingw_64/include/QtWidgets/qtabwidget.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qtwidgets-config.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qtwidgetsexports.h \
   C:/Qt/6.9.0/mingw_64/include/QtWidgets/qtwidgetsglobal.h \
@@ -433,4 +440,6 @@ D:/Projects/sea_battle/sea/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/sea_autogen
   C:/Qt/Tools/mingw1310_64/x86_64-w64-mingw32/include/sys/types.h \
   C:/Qt/Tools/mingw1310_64/x86_64-w64-mingw32/include/time.h \
   C:/Qt/Tools/mingw1310_64/x86_64-w64-mingw32/include/vadefs.h \
-  C:/Qt/Tools/mingw1310_64/x86_64-w64-mingw32/include/wchar.h
+  C:/Qt/Tools/mingw1310_64/x86_64-w64-mingw32/include/wchar.h \
+  D:/Projects/sea_battle/sea/battleshipgame.h \
+  D:/Projects/sea_battle/sea/mainmenu.h
