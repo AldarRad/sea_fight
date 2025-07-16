@@ -15,12 +15,17 @@
 #include <random>
 
 BattleShipGame::BattleShipGame(QWidget *parent) : QGraphicsView(parent),
-    placing(true), horizontal(true), currentShipIndex(0), myTurn(false), gameEnded(false),
-    server(nullptr), socket(nullptr), isServer(false), gridSize(Size10x10),
-    cellSize(DEFAULT_CELL_SIZE), minesEnabled(false), minesCount(2) {
-
+    placing(true), horizontal(true), currentShipIndex(0), myTurn(false),
+    gameEnded(false), server(nullptr), socket(nullptr), isServer(false),
+    gridSize(Size10x10), cellSize(DEFAULT_CELL_SIZE), minesEnabled(false),
+    minesCount(2)
+{
     scene = new QGraphicsScene(this);
     setScene(scene);
+
+    // Явно инициализируем сетки
+    playerGrid.resize(gridSize, std::vector<Cell>(gridSize, Empty));
+    opponentGrid.resize(gridSize, std::vector<Cell>(gridSize, Empty));
 
     // Добавьте эти проверки:
     qDebug() << "Constructor - scene created";
@@ -34,6 +39,16 @@ BattleShipGame::BattleShipGame(QWidget *parent) : QGraphicsView(parent),
     setMouseTracking(true);
 
     showGameOptions();
+    hitSound.setSource(QUrl::fromLocalFile(":/sounds/hit.wav"));
+    hitSound.setVolume(0.8f);
+
+    missSound.setSource(QUrl::fromLocalFile(":/sounds/miss.wav"));
+    missSound.setVolume(0.8f);
+
+    winSound.setSource(QUrl("qrc:/sounds/win.wav"));
+    winSound.setVolume(0.8f);
+    loseSound.setSource(QUrl("qrc:/sounds/lose.wav"));
+    loseSound.setVolume(0.8f);
 }
 
 void BattleShipGame::showGameOptions() {
@@ -97,6 +112,15 @@ void BattleShipGame::showGameOptions() {
 void BattleShipGame::initializeGame() {
     qDebug() << "Initializing game with gridSize:" << gridSize;
 
+    // Проверка размера
+    if (gridSize <= 0 || gridSize > Size12x12) {
+        qCritical() << "Invalid grid size";
+        return;
+    }
+
+    // Инициализация сеток
+    playerGrid.clear();
+    opponentGrid.clear();
     playerGrid.resize(gridSize, std::vector<Cell>(gridSize, Empty));
     opponentGrid.resize(gridSize, std::vector<Cell>(gridSize, Empty));
 
@@ -227,13 +251,22 @@ void BattleShipGame::startNetworkGame(bool asServer) {
 
 void BattleShipGame::sendMessage(const QString &message) {
     if (socket && socket->state() == QAbstractSocket::ConnectedState) {
-        QByteArray data = message.toUtf8();
-        socket->write(data);
-        socket->flush();
+        QByteArray data = (message + "\n").toUtf8(); // Добавляем символ новой строки
+        qint64 bytesWritten = socket->write(data);
+        if (bytesWritten == -1) {
+            qDebug() << "Failed to send message:" << socket->errorString();
+        } else {
+            qDebug() << "Message sent:" << message;
+            socket->flush();
+        }
+    } else {
+        qDebug() << "Cannot send message - no connection";
     }
 }
 
 void BattleShipGame::processCommand(const QString &command, const QString &data) {
+    qDebug() << "Processing command:" << command << "data:" << data;
+
     if (command == "SHOT") {
         QStringList coords = data.split(',');
         if (coords.size() == 2) {
@@ -242,14 +275,16 @@ void BattleShipGame::processCommand(const QString &command, const QString &data)
 
             if (playerGrid[x][y] == Ship) {
                 playerGrid[x][y] = Hit;
+                hitSound.play();
 
+                // Проверяем, не потоплен ли корабль
                 if (isShipSunk(playerGrid, x, y)) {
                     auto cells = getShipCells(playerGrid, x, y);
                     for (auto& s : playerFleet) {
                         if (s.remaining > 0 && s.size == (int)cells.size()) {
                             s.remaining--;
                             sendMessage("SUNK:" + QString::number(s.size));
-                            showMessage("Противник потопил ваш " + s.name + "!");
+                            showMessage("Противник потопил ваш " + s.name + "!", true);
                             break;
                         }
                     }
@@ -261,12 +296,50 @@ void BattleShipGame::processCommand(const QString &command, const QString &data)
                     endGame(false);
                     return;
                 }
-            } else if (playerGrid[x][y] == Empty) {
-                playerGrid[x][y] = Miss;
-                sendMessage("MISS:" + data);
-                myTurn = true;
-                showMessage("Ваш ход!", false);
             }
+            else if (playerGrid[x][y] == Mine) {
+                // Обработка попадания в мину
+                hitSound.play();
+                playerGrid[x][y] = Hit;
+
+                // Взрыв мины - поражаем соседние клетки
+                for (int dx = -1; dx <= 1; ++dx) {
+                    for (int dy = -1; dy <= 1; ++dy) {
+                        if (dx == 0 && dy == 0) continue;
+                        int nx = x + dx;
+                        int ny = y + dy;
+                        if (isInside(nx, ny)) {
+                            if (playerGrid[nx][ny] == Ship) {
+                                playerGrid[nx][ny] = Hit;
+                                if (isShipSunk(playerGrid, nx, ny)) {
+                                    auto cells = getShipCells(playerGrid, nx, ny);
+                                    for (auto& s : playerFleet) {
+                                        if (s.remaining > 0 && s.size == (int)cells.size()) {
+                                            s.remaining--;
+                                            sendMessage("SUNK:" + QString::number(s.size));
+                                            showMessage("Противник потопил ваш " + s.name + " (миной)!", true);
+                                            break;
+                                        }
+                                    }
+                                }
+                            }
+                            playerGrid[nx][ny] = Hit;
+                        }
+                    }
+                }
+
+                sendMessage("MINE_HIT:" + data);
+                myTurn = true; // После мины ход остается у атаковавшего
+            }
+            else if (playerGrid[x][y] == Empty) {
+                playerGrid[x][y] = Miss;
+                missSound.play();
+                sendMessage("MISS:" + data);
+                myTurn = true; // Передаем ход обратно
+                showMessage("Противник промахнулся! Ваш ход.", false);
+            }
+
+            drawGrids();
         }
     }
     else if (command == "HIT") {
@@ -275,7 +348,24 @@ void BattleShipGame::processCommand(const QString &command, const QString &data)
             int x = coords[0].toInt();
             int y = coords[1].toInt();
             opponentGrid[x][y] = Hit;
+            hitSound.play();
             showMessage("Вы попали!", true);
+
+            // Проверяем, не потоплен ли корабль
+            if (isShipSunk(opponentGrid, x, y)) {
+                auto cells = getShipCells(opponentGrid, x, y);
+                for (auto& s : opponentFleet) {
+                    if (s.remaining > 0 && s.size == (int)cells.size()) {
+                        s.remaining--;
+                        sendMessage("SUNK:" + QString::number(s.size));
+                        showMessage("Вы потопили " + s.name + " противника!");
+                        break;
+                    }
+                }
+            }
+
+            // Ход остаётся у текущего игрока при попадании
+            myTurn = true;
         }
     }
     else if (command == "MISS") {
@@ -284,38 +374,12 @@ void BattleShipGame::processCommand(const QString &command, const QString &data)
             int x = coords[0].toInt();
             int y = coords[1].toInt();
             opponentGrid[x][y] = Miss;
+            missSound.play();
             showMessage("Вы промахнулись!", true);
-            myTurn = false;
-            showMessage("Ожидаем ход противника...", false);
+            myTurn = false; // Передаём ход противнику
         }
     }
-    else if (command == "SUNK") {
-        int size = data.toInt();
-        for (auto& s : opponentFleet) {
-            if (s.size == size && s.remaining > 0) {
-                s.remaining--;
-                showMessage("Вы потопили " + s.name + " противника!", true);
-                break;
-            }
-        }
-
-        if (isGameOver(opponentFleet)) {
-            endGame(true);
-        }
-    }
-    else if (command == "READY") {
-        if (isServer) {
-            myTurn = true;
-            showMessage("Игра началась! Ваш ход.", false);
-        } else {
-            myTurn = false;
-            showMessage("Игра началась! Ожидаем ход противника...", false);
-        }
-    }
-
-    drawGrids();
 }
-
 void BattleShipGame::newConnection() {
     if (server && server->hasPendingConnections()) {
         socket = server->nextPendingConnection();
@@ -369,7 +433,7 @@ bool BattleShipGame::isSurroundingClear(Grid& grid, int x, int y, int size, bool
         for (int j = -1; j <= 1; ++j) {
             int nx = x + (horizontal ? i : j);
             int ny = y + (horizontal ? j : i);
-            if (isInside(nx, ny) && grid[nx][ny] != Empty)
+            if (isInside(nx, ny) && grid[nx][ny] != Empty && grid[nx][ny] != Mine) // Игнорируем мины
                 return false;
         }
     }
@@ -380,17 +444,17 @@ bool BattleShipGame::canPlace(Grid& grid, int x, int y, int size, bool horizonta
     for (int i = 0; i < size; ++i) {
         int px = x + (horizontal ? i : 0);
         int py = y + (horizontal ? 0 : i);
-        if (!isInside(px, py) || grid[px][py] != Empty)
+        if (!isInside(px, py) || (grid[px][py] != Empty && grid[px][py] != Mine)) // Разрешаем ставить на мины
             return false;
     }
-    return isSurroundingClear(grid, x, y, size, horizontal);
+    return true; // Убрали проверку окружения, чтобы можно было ставить рядом с минами
 }
 
 void BattleShipGame::placeShip(Grid& grid, int x, int y, int size, bool horizontal) {
     for (int i = 0; i < size; ++i) {
         int px = x + (horizontal ? i : 0);
         int py = y + (horizontal ? 0 : i);
-        grid[px][py] = Ship;
+        grid[px][py] = Ship; // Если здесь была мина, она будет заменена на корабль
     }
 }
 
@@ -437,9 +501,8 @@ bool BattleShipGame::isShipSunk(const Grid& grid, int x, int y) {
 
 void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
                               const std::vector<ShipInfo>& fleetInfo, bool showShips, const QString& label) {
+    if (!scene) return;  // Защита от nullptr
 
-    drawGrid(50, 50, playerGrid, playerFleet, true, "Игрок");
-    drawGrid(50 + gridSize * cellSize + 50, 50, opponentGrid, opponentFleet, false, "Противник");
     QFont font("Arial", 14, QFont::Bold);
     QFont smallFont("Arial", 10);
 
@@ -503,24 +566,12 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
             else if (grid[x][y] == Miss) {
                 cell->setBrush(QBrush(COLOR_MISS));
             }
-            else if (grid[x][y] == Mine && showShips) {
-                // Рисуем мину только на своем поле
-                QRadialGradient grad(cell->rect().center(), cellSize/3);
-                grad.setColorAt(0, QColor(255, 255, 100));
-                grad.setColorAt(1, QColor(255, 165, 0));
+            else if (grid[x][y] == Mine) {
+                // Мины теперь вообще не рисуем - они полностью невидимы
+                QLinearGradient grad(0, 0, 0, cellSize);
+                grad.setColorAt(0, QColor(30, 60, 120));
+                grad.setColorAt(1, QColor(10, 30, 80));
                 cell->setBrush(grad);
-
-                // Рисуем "взрывающиеся" линии
-                QGraphicsLineItem *line1 = new QGraphicsLineItem(
-                    offsetX + x * cellSize + cellSize/2, offsetY + y * cellSize + 5,
-                    offsetX + x * cellSize + cellSize/2, offsetY + y * cellSize + cellSize - 5);
-                QGraphicsLineItem *line2 = new QGraphicsLineItem(
-                    offsetX + x * cellSize + 5, offsetY + y * cellSize + cellSize/2,
-                    offsetX + x * cellSize + cellSize - 5, offsetY + y * cellSize + cellSize/2);
-                line1->setPen(QPen(Qt::black, 2));
-                line2->setPen(QPen(Qt::black, 2));
-                scene->addItem(line1);
-                scene->addItem(line2);
             }
             else {
                 QLinearGradient grad(0, 0, 0, cellSize);
@@ -557,20 +608,26 @@ void BattleShipGame::drawGrid(int offsetX, int offsetY, const Grid& grid,
         text->setDefaultTextColor(fleetInfo[i].remaining == 0 ? Qt::gray : COLOR_SHIP_COUNT);
         scene->addItem(text);
     }
-    qDebug() << "Drawing grids...";
-    drawGrids();
 }
 void BattleShipGame::drawGrids() {
+    if (!scene) return;  // Защита от nullptr
+
     scene->clear();
 
-    // Замените cellSize на cellSize
-    drawGrid(50, 50, playerGrid, playerFleet, true, "Игрок");
-    drawGrid(50 + gridSize * cellSize + 50, 50, opponentGrid, opponentFleet, false, "Противник");
+    // Рассчитываем позиции динамически
+    int gridWidth = gridSize * cellSize;
+    int spacing = 50;
+
+    // Рисуем поле игрока (левое)
+    drawGrid(spacing, spacing, playerGrid, playerFleet, true, "Игрок");
+
+    // Рисуем поле противника (правое)
+    drawGrid(spacing * 2 + gridWidth, spacing, opponentGrid, opponentFleet, false, "Противник");
 
     if (placing && currentShipIndex < playerFleet.size()) {
         QPoint mousePos = mapFromGlobal(QCursor::pos());
         QPointF pos = mapToScene(mousePos);
-        int mx = (pos.x() - 50) / cellSize;  // Исправлено здесь
+        int mx = (pos.x() - 50) / cellSize;
         int my = (pos.y() - 50) / cellSize;
 
         if (mx >= 0 && mx < gridSize && my >= 0 && my < gridSize) {
@@ -592,35 +649,12 @@ void BattleShipGame::drawGrids() {
                     }
                 }
 
-                // Рисуем красную зону вокруг корабля
-                if (!canPlaceHere) {
-                    for (int i = -1; i <= ship.size; ++i) {
-                        for (int j = -1; j <= 1; ++j) {
-                            int px = mx + (horizontal ? i : j);
-                            int py = my + (horizontal ? j : i);
-                            if (isInside(px, py) && playerGrid[px][py] == Empty) {
-                                QGraphicsRectItem *blocked = new QGraphicsRectItem(0, 0, cellSize- 2, cellSize- 2);
-                                blocked->setPos(50 + px * cellSize, 50 + py * cellSize);
-                                blocked->setBrush(QBrush(QColor(255, 0, 0, 100)));
-                                scene->addItem(blocked);
-                            }
-                        }
-                    }
-                }
-
                 // Подпись с названием и размером корабля
                 QGraphicsTextItem *shipInfo = new QGraphicsTextItem(ship.name + " (" + QString::number(ship.size) + " клетки)");
                 shipInfo->setFont(QFont("Arial", 12));
                 shipInfo->setDefaultTextColor(Qt::white);
                 shipInfo->setPos(50, 6);
                 scene->addItem(shipInfo);
-
-                // Подсказка управления
-                QGraphicsTextItem *hint = new QGraphicsTextItem("Нажмите X для смены ориентации");
-                hint->setFont(QFont("Arial", 10));
-                hint->setDefaultTextColor(Qt::white);
-                hint->setPos(50, 50 + gridSize * cellSize+ 200);
-                scene->addItem(hint);
             }
         }
     }
@@ -631,18 +665,7 @@ void BattleShipGame::drawGrids() {
         msg->setFont(QFont("Arial", 16, QFont::Bold));
         msg->setDefaultTextColor(COLOR_WAITING);
         QRectF rect = msg->boundingRect();
-        msg->setPos(WINDOW_WIDTH/2 - rect.width()/2, WINDOW_HEIGHT - 50);
-
-        // Фон для сообщения
-        QGraphicsRectItem *msgBg = new QGraphicsRectItem(
-            WINDOW_WIDTH/2 - rect.width()/2 - 10,
-            WINDOW_HEIGHT - 50 - 5,
-            rect.width() + 20,
-            rect.height() + 10
-            );
-        msgBg->setBrush(QBrush(Qt::black));
-        msgBg->setPen(QPen(COLOR_WAITING, 2));
-        scene->addItem(msgBg);
+        msg->setPos(width()/2 - rect.width()/2, height() - 50);
         scene->addItem(msg);
     }
 }
@@ -681,8 +704,10 @@ void BattleShipGame::endGame(bool winner) {
     gameEnded = true;
     if (winner) {
         showMessage("Поздравляем! Вы выиграли!", false);
+        winSound.play();
     } else {
         showMessage("К сожалению, вы проиграли...", false);
+        loseSound.play();
     }
 }
 
@@ -698,6 +723,7 @@ void BattleShipGame::mousePressEvent(QMouseEvent *event) {
             if (mx >= 0 && mx < gridSize && my >= 0 && my < gridSize) {
                 auto& ship = playerFleet[currentShipIndex];
                 if (ship.count > 0 && canPlace(playerGrid, mx, my, ship.size, horizontal)) {
+                    // При размещении корабля заменяем мину на корабль
                     placeShip(playerGrid, mx, my, ship.size, horizontal);
                     ship.count--;
                     if (ship.count == 0) currentShipIndex++;
@@ -721,44 +747,39 @@ void BattleShipGame::mousePressEvent(QMouseEvent *event) {
     } else if (myTurn && !placing) {
         if (event->button() == Qt::LeftButton) {
             QPointF pos = mapToScene(event->pos());
-            int mx = (pos.x() - (50 + gridSize * cellSize + 50)) / cellSize;
+            int playerGridWidth = gridSize * cellSize;
+            int opponentGridStartX = 50 + playerGridWidth + 50;
+            int mx = (pos.x() - opponentGridStartX) / cellSize;
             int my = (pos.y() - 50) / cellSize;
 
             if (mx >= 0 && mx < gridSize && my >= 0 && my < gridSize) {
+                // Проверяем, что по этой клетке ещё не стреляли
                 if (opponentGrid[mx][my] == Empty || opponentGrid[mx][my] == Mine) {
-                    if (opponentGrid[mx][my] == Mine) {
-                        // При попадании в мину - взрыв и повреждение соседних клеток
-                        for (int dx = -1; dx <= 1; ++dx) {
-                            for (int dy = -1; dy <= 1; ++dy) {
-                                int nx = mx + dx;
-                                int ny = my + dy;
-                                if (isInside(nx, ny)) {
-                                    if (opponentGrid[nx][ny] == Ship) {
-                                        opponentGrid[nx][ny] = Hit;
-                                        // Проверяем, не потоплен ли корабль
-                                        if (isShipSunk(opponentGrid, nx, ny)) {
-                                            auto cells = getShipCells(opponentGrid, nx, ny);
-                                            for (auto& s : opponentFleet) {
-                                                if (s.remaining > 0 && s.size == (int)cells.size()) {
-                                                    s.remaining--;
-                                                    sendMessage("SUNK:" + QString::number(s.size));
-                                                    showMessage("Вы потопили " + s.name + " противника (миной)!");
-                                                    break;
-                                                }
-                                            }
-                                        }
-                                    }
-                                    opponentGrid[nx][ny] = Hit;
-                                }
-                            }
+                    if (socket && socket->state() == QAbstractSocket::ConnectedState) {
+                        // Запоминаем координаты выстрела
+                        lastShotX = mx;
+                        lastShotY = my;
+
+                        if (opponentGrid[mx][my] == Mine) {
+                            // Обработка попадания в мину
+                            hitSound.play();
+                            sendMessage("MINE:" + QString::number(mx) + "," + QString::number(my));
+                        } else {
+                            // Обычный выстрел
+                            sendMessage("SHOT:" + QString::number(mx) + "," + QString::number(my));
                         }
-                        sendMessage("MINE:" + QString::number(mx) + "," + QString::number(my));
+
+                        // Не меняем ход здесь - дождёмся ответа от противника
+                        showMessage("Ожидаем ответ противника...", false);
+                        drawGrids();
                     } else {
-                        sendMessage("SHOT:" + QString::number(mx) + "," + QString::number(my));
+                        showMessage("Нет подключения к противнику!", true);
                     }
-                    myTurn = false;
-                    showMessage("Ожидаем ответ противника...", false);
+                } else {
+                    showMessage("Вы уже стреляли в эту клетку!", true);
                 }
+            } else {
+                showMessage("Выстрел за пределы поля!", true);
             }
         }
     }

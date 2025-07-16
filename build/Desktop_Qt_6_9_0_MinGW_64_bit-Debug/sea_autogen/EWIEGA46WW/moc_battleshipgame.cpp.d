@@ -186,6 +186,12 @@ D:/Projects/sea_battle/sea/build/Desktop_Qt_6_9_0_MinGW_64_bit-Debug/sea_autogen
   C:/Qt/6.9.0/mingw_64/include/QtGui/qvectornd.h \
   C:/Qt/6.9.0/mingw_64/include/QtGui/qwindowdefs.h \
   C:/Qt/6.9.0/mingw_64/include/QtGui/qwindowdefs_win.h \
+  C:/Qt/6.9.0/mingw_64/include/QtMultimedia/QSoundEffect \
+  C:/Qt/6.9.0/mingw_64/include/QtMultimedia/qaudio.h \
+  C:/Qt/6.9.0/mingw_64/include/QtMultimedia/qsoundeffect.h \
+  C:/Qt/6.9.0/mingw_64/include/QtMultimedia/qtmultimedia-config.h \
+  C:/Qt/6.9.0/mingw_64/include/QtMultimedia/qtmultimediaexports.h \
+  C:/Qt/6.9.0/mingw_64/include/QtMultimedia/qtmultimediaglobal.h \
   C:/Qt/6.9.0/mingw_64/include/QtNetwork/QTcpServer \
   C:/Qt/6.9.0/mingw_64/include/QtNetwork/QTcpSocket \
   C:/Qt/6.9.0/mingw_64/include/QtNetwork/qabstractsocket.h \

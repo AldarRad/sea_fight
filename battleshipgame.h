@@ -14,6 +14,7 @@
 #include <QRadioButton>
 #include <QCheckBox>
 #include <QPushButton>
+#include <QtMultimedia/QSoundEffect>
 #include <QHBoxLayout>
 
 enum GameSize { Size8x8 = 8, Size10x10 = 10, Size12x12 = 12 };
@@ -72,6 +73,13 @@ private slots:
     void connectionError(QAbstractSocket::SocketError socketError);
 
 private:
+    int lastShotX = -1;
+    int lastShotY = -1;
+    bool mineExploded = false;
+    QSoundEffect hitSound;
+    QSoundEffect missSound;
+    QSoundEffect winSound;
+    QSoundEffect loseSound;
     QGraphicsScene *scene;
     Grid playerGrid;
     Grid opponentGrid;
